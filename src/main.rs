@@ -6,8 +6,6 @@ use regex::Regex;
 use std::error::Error;
 use std::path::Path;
 use std::fs;
-use dirs;
-use rpassword;
 use std::time::Duration;
 
 /// SSH configuration for a host
@@ -327,7 +325,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     content
                 }
             },
-            Err(err) => {
+            Err(_err) => {
                 println!("⚠️ Grep command failed on {}. Trying with tail...", server.host);
                 
                 // If grep fails, use tail
@@ -539,9 +537,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             if common_period_threads.contains(&key) {
                 period_thread_hashes
                     .entry(key)
-                    .or_insert_with(HashMap::new)
+                    .or_default()
                     .entry(hash_info.hash.clone())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(server.clone());
             }
         }
