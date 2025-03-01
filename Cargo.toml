@@ -1,0 +1,11 @@
+[package]
+name = "massa_hash_checker"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ssh2 = "0.9"
+regex = "1.5"
+dirs = "4.0"
+rpassword = "5.0"
+whoami = "1.2"
