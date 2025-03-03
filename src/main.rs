@@ -136,11 +136,46 @@ fn run_ssh_command(sess: &Session, cmd: &str) -> Result<String, Box<dyn Error>> 
     Ok(output)
 }
 
+/// Search for the Massa log file in the user's directory
+fn find_massa_log_file(sess: &Session) -> Result<String, Box<dyn Error>> {
+    // Try several possible locations for the Massa log file
+    let possible_paths = [
+        "./massa/massa-node/logs/log.txt",       // Current directory structure
+        "/home/$USER/massa/massa-node/logs.txt",  // User's massa folder
+    ];
+    
+    // Command to try to find the log file in multiple locations
+    let find_cmd = format!(
+        "for path in {}; do path=$(eval echo \"$path\"); if [ -f \"$path\" ]; then echo \"$path\"; exit 0; fi; done; echo \"NOT_FOUND\"",
+        possible_paths.join(" ")
+    );
+    
+    let output = run_ssh_command(sess, &find_cmd)?;
+    let log_path = output.trim();
+    
+    if log_path == "NOT_FOUND" {
+        // If automatic detection failed, try using find
+        println!("  Trying to locate log file using find command...");
+        let find_cmd = "find ~ -type f -path \"*/massa/massa-node/logs/node.log\" -o -path \"*/.massa/massa-node/logs/node.log\" 2>/dev/null | head -n 1";
+        let output = run_ssh_command(sess, find_cmd)?;
+        let log_path = output.trim();
+        
+        if log_path.is_empty() {
+            return Err("Could not find Massa node log file".into());
+        }
+        
+        return Ok(log_path.to_string());
+    }
+    
+    Ok(log_path.to_string())
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     // Explicitly define servers to check (hardcoded list)
     const SERVERS_TO_CHECK: &[&str] = &[
-        "buildnet1",
-        "buildnet2"
+        "buildnet0",
+        "buildnet2",
+        "labnet1",
     ];
     
     // Prompt for SSH passphrase
@@ -150,7 +185,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let passphrase = if passphrase.is_empty() { None } else { Some(passphrase) };
     
     // Prompt for log file path
-    print!("Log file path on servers (e.g., /root/.massa/massa-node/logs/node.log): ");
+    print!("Log file path on servers (leave empty = autodiscover): ");
     io::stdout().flush()?;
     let mut log_path = String::new();
     io::stdin().read_line(&mut log_path)?;
@@ -213,7 +248,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("\nConnecting to servers and retrieving the {} latest hashes...", hashes_count);
     
     // Process each server
-    for server in servers {
+    for mut server in servers {
         processed_servers += 1;
         
         // Get SSH configuration for this host
@@ -267,6 +302,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         if !sess.authenticated() {
             panic!("❌ Authentication failed for {}", server.host);
         }
+
+        if server.log_path.is_empty() {
+            server.log_path  = find_massa_log_file(&sess).unwrap();
+        } 
         
         // Check if log file exists
         let check_cmd = format!("if [ -f \"{}\" ]; then echo 'EXISTS'; else echo 'NOT FOUND'; fi", server.log_path);
@@ -457,7 +496,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             
             // Display some hashes for verification
             println!("  Examples of most recent hashes:");
-            for (i, hash_info) in hash_infos.iter().take(3).enumerate() {
+            for (i, hash_info) in hash_infos.iter().take(6).enumerate() {
                 println!("    {}. Period: {}, Thread: {}, Hash: {}", 
                          i+1, hash_info.period, hash_info.thread, hash_info.hash);
             }
